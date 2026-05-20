@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ひかりのめいろ — Light Maze</title>
+<meta name="description" content="鏡で光をあやつるパズルゲーム！対象年齢5-9歳 / Light Maze — guide laser beams with mirrors! Ages 5-9.">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a1a;color:#e0e8f0;font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+
+/* Screens */
+.screen{display:none;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;top:0;left:0}
+.screen.active{display:flex}
+
+/* Title Screen */
+#titleScreen{background:radial-gradient(ellipse at 50% 40%,#1a1a3e 0%,#0a0a1a 70%)}
+.title-logo{font-size:clamp(2rem,8vw,4rem);font-weight:900;letter-spacing:.1em;background:linear-gradient(135deg,#00d4ff,#ff44aa,#ffcc00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-shadow:none;margin-bottom:.2em;animation:titleGlow 3s ease-in-out infinite alternate}
+.title-sub{font-size:clamp(.9rem,3vw,1.3rem);color:#88aacc;margin-bottom:2em;letter-spacing:.15em}
+@keyframes titleGlow{0%{filter:brightness(1) drop-shadow(0 0 10px rgba(0,212,255,.3))}100%{filter:brightness(1.2) drop-shadow(0 0 20px rgba(255,68,170,.4))}}
+.btn{display:inline-block;padding:.8em 2.5em;border:2px solid #00d4ff;border-radius:2em;background:rgba(0,212,255,.1);color:#00d4ff;font-size:clamp(1rem,3.5vw,1.3rem);font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.05em}
+.btn:hover,.btn:active{background:rgba(0,212,255,.25);box-shadow:0 0 20px rgba(0,212,255,.3);transform:scale(1.05)}
+.btn-small{padding:.5em 1.5em;font-size:clamp(.8rem,2.5vw,1rem)}
+.age-badge{margin-top:1.5em;padding:.4em 1.2em;border-radius:1em;background:rgba(255,204,0,.15);color:#ffcc00;font-size:.85rem;border:1px solid rgba(255,204,0,.3)}
+
+/* Level Select */
+#levelScreen{background:#0a0a1a;padding:1em}
+.level-title{font-size:clamp(1.2rem,4vw,1.8rem);margin-bottom:.8em;color:#00d4ff}
+.level-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6em;max-width:400px;width:90%}
+.level-btn{aspect-ratio:1;border-radius:.8em;border:2px solid #2a2a5e;background:rgba(20,20,50,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.level-btn.unlocked{border-color:#00d4ff;background:rgba(0,212,255,.08)}
+.level-btn.unlocked:hover{background:rgba(0,212,255,.2);transform:scale(1.05)}
+.level-btn.cleared{border-color:#44ff88}
+.level-btn.cleared::after{content:'★';position:absolute;top:.2em;right:.3em;color:#ffcc00;font-size:.8em}
+.level-btn.locked{opacity:.35;cursor:default}
+.level-num{font-size:clamp(1.2rem,4vw,1.6rem);font-weight:900;color:#00d4ff}
+.level-btn.cleared .level-num{color:#44ff88}
+.level-name{font-size:clamp(.5rem,1.8vw,.7rem);color:#88aacc;margin-top:.2em;text-align:center;line-height:1.2}
+
+/* Game Screen */
+#gameScreen{background:#0a0a1a;flex-direction:column;padding:.3em}
+.game-header{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:600px;padding:.3em .5em;flex-shrink:0}
+.game-header .level-label{font-size:clamp(.8rem,2.5vw,1rem);color:#88aacc}
+.game-header .level-label span{color:#00d4ff;font-weight:700}
+.header-btn{width:2.2em;height:2.2em;border-radius:50%;border:2px solid #3a3a6e;background:rgba(30,30,60,.8);color:#88aacc;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.header-btn:hover{border-color:#00d4ff;color:#00d4ff}
+
+/* Game Grid Container */
+.grid-wrap{position:relative;flex:1;display:flex;align-items:center;justify-content:center;width:100%;max-width:600px;min-height:0}
+.grid-container{position:relative;display:grid;gap:2px;background:rgba(20,20,50,.5);border-radius:.5em;border:2px solid #1a1a3e;padding:2px}
+#beamCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;border-radius:.5em}
+
+/* Grid Cells */
+.cell{position:relative;border-radius:4px;background:rgba(15,15,35,.9);cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;aspect-ratio:1}
+.cell:hover{background:rgba(25,25,55,.9)}
+.cell.wall{background:rgba(50,50,80,.9);cursor:default}
+.cell.source{background:rgba(255,204,0,.12);cursor:default}
+.cell.target{cursor:default}
+.cell.has-mirror{background:rgba(0,180,255,.08)}
+.cell.has-prism{background:rgba(200,100,255,.08)}
+.cell.placeable{background:rgba(0,212,255,.06)}
+.cell.placeable:hover{background:rgba(0,212,255,.15);box-shadow:inset 0 0 10px rgba(0,212,255,.1)}
+.cell.highlight-target{animation:targetPulse 1s ease-in-out infinite}
+@keyframes targetPulse{0%,100%{box-shadow:inset 0 0 5px rgba(0,255,100,.2)}50%{box-shadow:inset 0 0 15px rgba(0,255,100,.5)}}
+
+/* Cell contents */
+.cell-icon{font-size:clamp(1rem,4vw,1.8rem);line-height:1;z-index:2;pointer-events:none}
+.cell .arrow{position:absolute;font-size:clamp(.6rem,2vw,.9rem);color:#ffcc00;opacity:.7;z-index:2}
+.mirror-icon{font-size:clamp(1.2rem,5vw,2rem);color:#88ddff;font-weight:900;text-shadow:0 0 8px rgba(100,200,255,.5);z-index:2;font-family:monospace}
+
+/* Target ring */
+.target-ring{width:60%;height:60%;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center;z-index:2}
+.target-ring.white{border-color:rgba(255,255,255,.6);box-shadow:0 0 8px rgba(255,255,255,.2)}
+.target-ring.red{border-color:rgba(255,80,80,.7);box-shadow:0 0 8px rgba(255,80,80,.3)}
+.target-ring.green{border-color:rgba(80,255,80,.7);box-shadow:0 0 8px rgba(80,255,80,.3)}
+.target-ring.blue{border-color:rgba(80,80,255,.8);box-shadow:0 0 8px rgba(80,80,255,.3)}
+.target-ring.hit{animation:targetHit .5s ease forwards}
+@keyframes targetHit{0%{transform:scale(1)}50%{transform:scale(1.3)}100%{transform:scale(1);background:currentColor;opacity:.5}}
+
+/* Toolbox */
+.toolbox{display:flex;align-items:center;justify-content:center;gap:.5em;padding:.5em;flex-shrink:0;width:100%;max-width:600px}
+.tool-item{display:flex;align-items:center;gap:.3em;padding:.5em .8em;border-radius:.8em;border:2px solid #2a2a5e;background:rgba(20,20,50,.8);cursor:pointer;transition:all .2s;min-width:4em;justify-content:center}
+.tool-item.selected{border-color:#00d4ff;background:rgba(0,212,255,.15);box-shadow:0 0 12px rgba(0,212,255,.2)}
+.tool-item.empty{opacity:.3;cursor:default}
+.tool-icon{font-size:clamp(1rem,3.5vw,1.4rem)}
+.tool-count{font-size:clamp(.7rem,2vw,.9rem);color:#00d4ff;font-weight:700;min-width:1.2em;text-align:center}
+.tool-item .tool-label{font-size:clamp(.5rem,1.5vw,.7rem);color:#88aacc}
+.reset-btn{padding:.5em 1em;border-radius:.8em;border:2px solid #ff6644;background:rgba(255,100,68,.1);color:#ff6644;font-size:clamp(.7rem,2vw,.85rem);cursor:pointer;font-weight:700;transition:all .2s}
+.reset-btn:hover{background:rgba(255,100,68,.2)}
+
+/* Hint */
+.hint-area{height:1.5em;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hint-text{font-size:clamp(.7rem,2vw,.85rem);color:#88aacc;text-align:center;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+
+/* Victory Overlay */
+#victoryOverlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(5,5,15,.85);z-index:100;flex-direction:column;align-items:center;justify-content:center;animation:fadeIn .3s ease}
+#victoryOverlay.active{display:flex}
+.victory-text{font-size:clamp(1.5rem,6vw,2.5rem);font-weight:900;color:#ffcc00;margin-bottom:.3em;animation:victoryBounce .6s ease}
+.victory-sub{font-size:clamp(.9rem,3vw,1.2rem);color:#88aacc;margin-bottom:1.5em}
+@keyframes victoryBounce{0%{transform:scale(0);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
+.victory-btns{display:flex;gap:1em}
+
+/* Sparkle particles */
+.sparkle{position:fixed;width:6px;height:6px;border-radius:50%;pointer-events:none;z-index:101;animation:sparkleFly 1s ease-out forwards}
+@keyframes sparkleFly{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(0) translateY(-60px)}}
+
+/* Stars */
+.stars{display:flex;gap:.3em;margin-bottom:1em}
+.star{font-size:clamp(1.5rem,5vw,2.5rem);opacity:.2;transition:all .3s}
+.star.earned{opacity:1;animation:starPop .4s ease}
+@keyframes starPop{0%{transform:scale(0) rotate(-30deg)}70%{transform:scale(1.3) rotate(10deg)}100%{transform:scale(1) rotate(0)}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:0;height:0}
+</style>
+</head>
+<body>
+
+<!-- Title Screen -->
+<div id="titleScreen" class="screen active">
+  <div class="title-logo">ひかりのめいろ</div>
+  <div class="title-sub">Light Maze</div>
+  <button class="btn" onclick="showScreen('levelScreen')">あそぶ</button>
+  <div class="age-badge">🎯 5〜9さい</div>
+</div>
+
+<!-- Level Select -->
+<div id="levelScreen" class="screen">
+  <div class="level-title">レベルをえらぼう</div>
+  <div class="level-grid" id="levelGrid"></div>
+  <button class="btn btn-small" style="margin-top:1.2em" onclick="showScreen('titleScreen')">もどる</button>
+</div>
+
+<!-- Game Screen -->
+<div id="gameScreen" class="screen">
+  <div class="game-header">
+    <button class="header-btn" onclick="showScreen('levelScreen')" title="レベル選択">←</button>
+    <div class="level-label">Level <span id="levelNum">1</span> <span id="levelTitle" style="color:#88aacc;font-weight:400"></span></div>
+    <button class="header-btn" onclick="resetLevel()" title="やりなおし">↺</button>
+  </div>
+  <div class="hint-area"><div class="hint-text" id="hintText"></div></div>
+  <div class="grid-wrap" id="gridWrap">
+    <div class="grid-container" id="gridContainer">
+      <canvas id="beamCanvas"></canvas>
+    </div>
+  </div>
+  <div class="toolbox" id="toolbox"></div>
+</div>
+
+<!-- Victory Overlay -->
+<div id="victoryOverlay">
+  <div class="stars" id="victoryStars"></div>
+  <div class="victory-text" id="victoryTitle">クリア！</div>
+  <div class="victory-sub" id="victorySub"></div>
+  <div class="victory-btns">
+    <button class="btn btn-small" onclick="resetLevel();hideVictory()">もういちど</button>
+    <button class="btn btn-small" id="nextBtn" onclick="nextLevel()">つぎへ →</button>
+  </div>
+</div>
+
+<script>
+// ─── Constants ───
+const EMPTY=0,WALL=1,SOURCE=2,TARGET=3,MIRROR=4,PRISM=6;
+const DIR={right:{dx:1,dy:0},left:{dx:-1,dy:0},up:{dx:0,dy:-1},down:{dx:0,dy:1}};
+const DIR_ARROWS={right:'→',left:'←',up:'↑',down:'↓'};
+
+// ─── State ───
+let currentLevel=0;
+let grid=[];
+let gridSize=0;
+let cellPx=0;
+let selectedTool=null;
+let availableMirrors=0;
+let availablePrisms=0;
+let placedCount=0;
+let levelCleared=[];
+let beamSegments=[];
+let beamAnimProgress=0;
+let beamAnimTimer=null;
+let targetsHit=new Set();
+let levelDef=null;
+let victoryShown=false;
+
+// Load progress
+try{levelCleared=JSON.parse(localStorage.getItem('hikari-cleared')||'[]')}catch(e){levelCleared=[]}
+
+// ─── Level Definitions ───
+const LEVELS=[
+  // 1: straight beam — just watch
+  {
+    name:'まっすぐ',size:5,
+    cells:[{x:0,y:2,type:SOURCE,dir:'right'},{x:4,y:2,type:TARGET,color:'white'}],
+    mirrors:0,prisms:0,par:0,
+    hint:'ひかりは まっすぐ すすむよ！'
+  },
+  // 2: one / mirror: right→up
+  {
+    name:'はじめてのかがみ',size:5,
+    cells:[{x:0,y:2,type:SOURCE,dir:'right'},{x:2,y:0,type:TARGET,color:'white'}],
+    mirrors:2,prisms:0,par:1,
+    hint:'かがみ🪞を おいて ひかりの むきを かえよう'
+  },
+  // 3: two turns — right,down,left back to col 0
+  {
+    name:'にかいまがる',size:6,
+    cells:[{x:0,y:0,type:SOURCE,dir:'right'},{x:0,y:5,type:TARGET,color:'white'}],
+    mirrors:3,prisms:0,par:2,
+    hint:'2かい まがって とどけよう'
+  },
+  // 4: wall in the way — go around (3 mirrors min)
+  {
+    name:'かべのまわり',size:7,
+    cells:[
+      {x:0,y:3,type:SOURCE,dir:'right'},{x:6,y:3,type:TARGET,color:'white'},
+      {x:3,y:1,type:WALL},{x:3,y:2,type:WALL},{x:3,y:3,type:WALL},{x:3,y:4,type:WALL},{x:3,y:5,type:WALL}
+    ],
+    mirrors:5,prisms:0,par:3,
+    hint:'かべを まわりこもう'
+  },
+  // 5: zigzag around L-wall (3 mirrors)
+  {
+    name:'ジグザグ',size:7,
+    cells:[
+      {x:0,y:0,type:SOURCE,dir:'down'},{x:6,y:6,type:TARGET,color:'white'},
+      {x:0,y:3,type:WALL},{x:1,y:3,type:WALL},{x:2,y:3,type:WALL},{x:3,y:3,type:WALL},
+      {x:3,y:4,type:WALL},{x:3,y:5,type:WALL},{x:3,y:6,type:WALL},
+      {x:5,y:2,type:WALL},{x:6,y:2,type:WALL}
+    ],
+    mirrors:5,prisms:0,par:3,
+    hint:'かべに きをつけて すすもう'
+  },
+  // 6: prism intro — place prism at (3,3), beams go to 3 targets directly
+  // right beam: green→right(6,3) red→down(3,6) blue→up(3,0)
+  {
+    name:'にじいろプリズム',size:7,
+    cells:[
+      {x:0,y:3,type:SOURCE,dir:'right'},
+      {x:3,y:0,type:TARGET,color:'blue'},
+      {x:6,y:3,type:TARGET,color:'green'},
+      {x:3,y:6,type:TARGET,color:'red'}
+    ],
+    mirrors:2,prisms:1,par:1,
+    hint:'プリズム🔺で ひかりを 3いろに わけよう！'
+  },
+  // 7: prism + 2 mirrors — split then redirect via mirrors
+  // prism at(4,3): green→right(6,3)✓ blue→up(4,1)→/→right(6,1) red→down(4,5)→\→right(6,5)
+  {
+    name:'いろのめいろ',size:7,
+    cells:[
+      {x:0,y:3,type:SOURCE,dir:'right'},
+      {x:6,y:1,type:TARGET,color:'blue'},
+      {x:6,y:3,type:TARGET,color:'green'},
+      {x:6,y:5,type:TARGET,color:'red'}
+    ],
+    mirrors:4,prisms:1,par:3,
+    hint:'かがみで いろを みちびこう'
+  },
+  // 8: grand finale — mirror to redirect, prism to split, mirrors to route colors
+  // \@(1,0):right→down, prism@(1,4), green↓→\@(1,5)→right(7,5), red←→/@(0,4)→down(0,7), blue→right→/@(7,4)→up(7,2)
+  {
+    name:'グランドフィナーレ',size:8,
+    cells:[
+      {x:0,y:0,type:SOURCE,dir:'right'},
+      {x:7,y:5,type:TARGET,color:'green'},
+      {x:0,y:7,type:TARGET,color:'red'},
+      {x:7,y:2,type:TARGET,color:'blue'},
+      {x:2,y:0,type:WALL},{x:1,y:6,type:WALL}
+    ],
+    mirrors:6,prisms:1,par:5,
+    hint:'ぜんぶの まとに いろを とどけよう！'
+  }
+];
+
+// ─── Screen Management ───
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='levelScreen')buildLevelGrid();
+  if(id==='gameScreen')initLevel(currentLevel);
+}
+
+function buildLevelGrid(){
+  const g=document.getElementById('levelGrid');
+  g.innerHTML='';
+  LEVELS.forEach((lv,i)=>{
+    const d=document.createElement('div');
+    d.className='level-btn';
+    const unlocked=i===0||levelCleared[i-1];
+    if(unlocked)d.classList.add('unlocked');
+    else d.classList.add('locked');
+    if(levelCleared[i])d.classList.add('cleared');
+    d.innerHTML=`<div class="level-num">${i+1}</div><div class="level-name">${lv.name}</div>`;
+    if(unlocked)d.onclick=()=>{currentLevel=i;showScreen('gameScreen')};
+    g.appendChild(d);
+  });
+}
+
+// ─── Level Init ───
+function initLevel(idx){
+  levelDef=LEVELS[idx];
+  gridSize=levelDef.size;
+  victoryShown=false;
+  targetsHit.clear();
+  placedCount=0;
+  selectedTool=null;
+  availableMirrors=levelDef.mirrors;
+  availablePrisms=levelDef.prisms||0;
+  beamSegments=[];
+  document.getElementById('levelNum').textContent=idx+1;
+  document.getElementById('levelTitle').textContent=levelDef.name;
+  document.getElementById('hintText').textContent=levelDef.hint||'';
+  grid=[];
+  for(let r=0;r<gridSize;r++){
+    grid[r]=[];
+    for(let c=0;c<gridSize;c++){
+      grid[r][c]={type:EMPTY};
+    }
+  }
+  levelDef.cells.forEach(c=>{
+    grid[c.y][c.x]={type:c.type,dir:c.dir,color:c.color,fixed:true};
+  });
+  buildGrid();
+  buildToolbox();
+  requestAnimationFrame(()=>{
+    sizeGrid();
+    traceAndRender();
+  });
+}
+
+function buildGrid(){
+  const container=document.getElementById('gridContainer');
+  container.style.gridTemplateColumns=`repeat(${gridSize},1fr)`;
+  const oldCells=container.querySelectorAll('.cell');
+  oldCells.forEach(c=>c.remove());
+  const canvas=document.getElementById('beamCanvas');
+  for(let r=0;r<gridSize;r++){
+    for(let c=0;c<gridSize;c++){
+      const div=document.createElement('div');
+      div.className='cell';
+      div.dataset.x=c;
+      div.dataset.y=r;
+      div.onclick=()=>onCellClick(c,r);
+      container.insertBefore(div,canvas);
+    }
+  }
+  renderCells();
+}
+
+function sizeGrid(){
+  const wrap=document.getElementById('gridWrap');
+  const container=document.getElementById('gridContainer');
+  const canvas=document.getElementById('beamCanvas');
+  const maxW=Math.min(wrap.clientWidth-16,600);
+  const maxH=wrap.clientHeight-16;
+  const gapTotal=(gridSize-1)*2+4;
+  cellPx=Math.floor(Math.min((maxW-gapTotal)/gridSize,(maxH-gapTotal)/gridSize));
+  cellPx=Math.max(cellPx,30);
+  const totalPx=cellPx*gridSize+gapTotal;
+  container.style.width=totalPx+'px';
+  container.style.height=totalPx+'px';
+  container.querySelectorAll('.cell').forEach(c=>{
+    c.style.width=cellPx+'px';
+    c.style.height=cellPx+'px';
+  });
+  canvas.width=totalPx;
+  canvas.height=totalPx;
+  canvas.style.width=totalPx+'px';
+  canvas.style.height=totalPx+'px';
+}
+
+function renderCells(){
+  const container=document.getElementById('gridContainer');
+  const cells=container.querySelectorAll('.cell');
+  cells.forEach(div=>{
+    const x=+div.dataset.x,y=+div.dataset.y;
+    const cell=grid[y][x];
+    div.className='cell';
+    div.innerHTML='';
+    if(cell.type===WALL){
+      div.classList.add('wall');
+    }else if(cell.type===SOURCE){
+      div.classList.add('source');
+      const arrow=document.createElement('div');
+      arrow.className='cell-icon';
+      arrow.textContent='💡';
+      div.appendChild(arrow);
+      const ar=document.createElement('div');
+      ar.className='arrow';
+      ar.textContent=DIR_ARROWS[cell.dir];
+      ar.style.cssText=cell.dir==='right'?'right:2px;top:50%;transform:translateY(-50%)':cell.dir==='left'?'left:2px;top:50%;transform:translateY(-50%)':cell.dir==='down'?'bottom:2px;left:50%;transform:translateX(-50%)':'top:2px;left:50%;transform:translateX(-50%)';
+      div.appendChild(ar);
+    }else if(cell.type===TARGET){
+      div.classList.add('target');
+      const ring=document.createElement('div');
+      ring.className='target-ring '+(cell.color||'white');
+      ring.id='target-'+x+'-'+y;
+      const inner=document.createElement('div');
+      inner.textContent='◎';
+      inner.style.cssText='font-size:clamp(.6rem,2.5vw,1rem);opacity:.5;color:inherit';
+      ring.appendChild(inner);
+      div.appendChild(ring);
+    }else if(cell.type===MIRROR){
+      div.classList.add('has-mirror');
+      const m=document.createElement('div');
+      m.className='mirror-icon';
+      m.textContent=cell.angle===0?'/':'\\';
+      div.appendChild(m);
+    }else if(cell.type===PRISM){
+      div.classList.add('has-prism');
+      const p=document.createElement('div');
+      p.className='cell-icon';
+      p.textContent='🔺';
+      div.appendChild(p);
+    }else{
+      div.classList.add('placeable');
+    }
+  });
+}
+
+function buildToolbox(){
+  const tb=document.getElementById('toolbox');
+  tb.innerHTML='';
+  if(levelDef.mirrors>0){
+    const mi=document.createElement('div');
+    mi.className='tool-item'+(selectedTool==='mirror'?' selected':'');
+    mi.id='tool-mirror';
+    mi.innerHTML=`<span class="tool-icon">🪞</span><span class="tool-count" id="mirrorCount">${availableMirrors}</span><span class="tool-label">かがみ</span>`;
+    mi.onclick=()=>selectTool('mirror');
+    if(availableMirrors<=0)mi.classList.add('empty');
+    tb.appendChild(mi);
+  }
+  if(levelDef.prisms>0){
+    const pi=document.createElement('div');
+    pi.className='tool-item'+(selectedTool==='prism'?' selected':'');
+    pi.id='tool-prism';
+    pi.innerHTML=`<span class="tool-icon">🔺</span><span class="tool-count" id="prismCount">${availablePrisms}</span><span class="tool-label">プリズム</span>`;
+    pi.onclick=()=>selectTool('prism');
+    if(availablePrisms<=0)pi.classList.add('empty');
+    tb.appendChild(pi);
+  }
+  const rb=document.createElement('button');
+  rb.className='reset-btn';
+  rb.textContent='↺ リセット';
+  rb.onclick=resetLevel;
+  tb.appendChild(rb);
+}
+
+function selectTool(t){
+  if(selectedTool===t){selectedTool=null}
+  else{selectedTool=t}
+  updateToolboxUI();
+}
+
+function updateToolboxUI(){
+  const mi=document.getElementById('tool-mirror');
+  const pi=document.getElementById('tool-prism');
+  if(mi){
+    mi.classList.toggle('selected',selectedTool==='mirror');
+    mi.classList.toggle('empty',availableMirrors<=0);
+    document.getElementById('mirrorCount').textContent=availableMirrors;
+  }
+  if(pi){
+    pi.classList.toggle('selected',selectedTool==='prism');
+    pi.classList.toggle('empty',availablePrisms<=0);
+    document.getElementById('prismCount').textContent=availablePrisms;
+  }
+}
+
+// ─── Cell Interaction ───
+function onCellClick(x,y){
+  if(victoryShown)return;
+  const cell=grid[y][x];
+  if(cell.type===WALL||cell.type===SOURCE||cell.type===TARGET)return;
+  if(cell.type===MIRROR){
+    cell.angle=cell.angle===0?1:0;
+    renderCells();
+    traceAndRender();
+    return;
+  }
+  if(cell.type===PRISM){
+    grid[y][x]={type:EMPTY};
+    availablePrisms++;
+    placedCount--;
+    selectedTool='prism';
+    renderCells();
+    updateToolboxUI();
+    traceAndRender();
+    return;
+  }
+  if(cell.type===EMPTY){
+    if(selectedTool==='mirror'&&availableMirrors>0){
+      grid[y][x]={type:MIRROR,angle:0};
+      availableMirrors--;
+      placedCount++;
+      renderCells();
+      updateToolboxUI();
+      traceAndRender();
+    }else if(selectedTool==='prism'&&availablePrisms>0){
+      grid[y][x]={type:PRISM};
+      availablePrisms--;
+      placedCount++;
+      renderCells();
+      updateToolboxUI();
+      traceAndRender();
+    }
+  }
+}
+
+function resetLevel(){
+  for(let r=0;r<gridSize;r++){
+    for(let c=0;c<gridSize;c++){
+      if(!grid[r][c].fixed&&grid[r][c].type!==EMPTY){
+        grid[r][c]={type:EMPTY};
+      }
+    }
+  }
+  availableMirrors=levelDef.mirrors;
+  availablePrisms=levelDef.prisms||0;
+  placedCount=0;
+  selectedTool=null;
+  victoryShown=false;
+  targetsHit.clear();
+  beamSegments=[];
+  renderCells();
+  buildToolbox();
+  traceAndRender();
+}
+
+// ─── Beam Tracing ───
+function reflectNE(dx,dy){
+  if(dx===1&&dy===0)return[0,-1];
+  if(dx===-1&&dy===0)return[0,1];
+  if(dx===0&&dy===-1)return[1,0];
+  if(dx===0&&dy===1)return[-1,0];
+  return[dx,dy];
+}
+function reflectNW(dx,dy){
+  if(dx===1&&dy===0)return[0,1];
+  if(dx===-1&&dy===0)return[0,-1];
+  if(dx===0&&dy===-1)return[-1,0];
+  if(dx===0&&dy===1)return[1,0];
+  return[dx,dy];
+}
+function rotateCW(dx,dy){return[-dy,dx]}
+function rotateCCW(dx,dy){return[dy,-dx]}
+
+function traceBeam(){
+  const segments=[];
+  const targets=[];
+  targetsHit.clear();
+  let sources=[];
+  for(let r=0;r<gridSize;r++){
+    for(let c=0;c<gridSize;c++){
+      if(grid[r][c].type===SOURCE){
+        const d=DIR[grid[r][c].dir];
+        sources.push({x:c,y:r,dx:d.dx,dy:d.dy,color:'white'});
+      }
+      if(grid[r][c].type===TARGET){
+        targets.push({x:c,y:r,color:grid[r][c].color||'white'});
+      }
+    }
+  }
+  const visited=new Set();
+  const queue=[...sources];
+  while(queue.length>0){
+    const beam=queue.shift();
+    let{x,y,dx,dy,color}=beam;
+    let steps=0;
+    while(steps<200){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||nx>=gridSize||ny<0||ny>=gridSize)break;
+      const key=nx+','+ny+','+dx+','+dy+','+color;
+      if(visited.has(key))break;
+      visited.add(key);
+      segments.push({x1:x,y1:y,x2:nx,y2:ny,color});
+      const cell=grid[ny][nx];
+      if(cell.type===WALL)break;
+      if(cell.type===TARGET){
+        const tc=cell.color||'white';
+        if(tc==='white'||tc===color){
+          targetsHit.add(nx+','+ny);
+        }
+        break;
+      }
+      if(cell.type===MIRROR){
+        const ref=cell.angle===0?reflectNE:reflectNW;
+        [dx,dy]=ref(dx,dy);
+      }else if(cell.type===PRISM&&color==='white'){
+        const [cwx,cwy]=rotateCW(dx,dy);
+        const [ccwx,ccwy]=rotateCCW(dx,dy);
+        queue.push({x:nx,y:ny,dx:dx,dy:dy,color:'green'});
+        queue.push({x:nx,y:ny,dx:cwx,dy:cwy,color:'red'});
+        queue.push({x:nx,y:ny,dx:ccwx,dy:ccwy,color:'blue'});
+        break;
+      }else if(cell.type===PRISM&&color!=='white'){
+        break;
+      }
+      x=nx;y=ny;
+      steps++;
+    }
+  }
+  const allHit=targets.length>0&&targets.every(t=>targetsHit.has(t.x+','+t.y));
+  return{segments,allHit,targets};
+}
+
+// ─── Beam Rendering ───
+function traceAndRender(){
+  const result=traceBeam();
+  beamSegments=result.segments;
+  animateBeam(beamSegments,()=>{
+    updateTargetVisuals();
+    if(result.allHit&&!victoryShown&&placedCount>=0){
+      victoryShown=true;
+      setTimeout(()=>showVictory(),400);
+    }
+  });
+}
+
+function animateBeam(segs,onDone){
+  if(beamAnimTimer)clearInterval(beamAnimTimer);
+  beamAnimProgress=0;
+  if(segs.length===0){
+    renderBeamFrame([]);
+    if(onDone)onDone();
+    return;
+  }
+  const speed=Math.max(1,Math.ceil(segs.length/15));
+  beamAnimTimer=setInterval(()=>{
+    beamAnimProgress+=speed;
+    if(beamAnimProgress>=segs.length){
+      beamAnimProgress=segs.length;
+      clearInterval(beamAnimTimer);
+      beamAnimTimer=null;
+      renderBeamFrame(segs);
+      if(onDone)onDone();
+      return;
+    }
+    renderBeamFrame(segs.slice(0,beamAnimProgress));
+  },30);
+}
+
+function renderBeamFrame(segs){
+  const canvas=document.getElementById('beamCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const gap=2,pad=2;
+  const cellTotal=cellPx+gap;
+  const off=pad+cellPx/2;
+  const colorMap={
+    white:'rgba(255,255,255,',
+    red:'rgba(255,70,70,',
+    green:'rgba(70,255,100,',
+    blue:'rgba(100,120,255,'
+  };
+  segs.forEach(seg=>{
+    const cm=colorMap[seg.color]||colorMap.white;
+    const x1=seg.x1*cellTotal+off;
+    const y1=seg.y1*cellTotal+off;
+    const x2=seg.x2*cellTotal+off;
+    const y2=seg.y2*cellTotal+off;
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.lineWidth=cellPx*0.22;
+    ctx.strokeStyle=cm+'0.12)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.lineWidth=cellPx*0.12;
+    ctx.strokeStyle=cm+'0.35)';
+    ctx.shadowBlur=cellPx*0.3;
+    ctx.shadowColor=cm+'0.5)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.lineWidth=cellPx*0.04;
+    ctx.strokeStyle=cm+'1)';
+    ctx.shadowBlur=cellPx*0.15;
+    ctx.shadowColor=cm+'0.8)';
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function updateTargetVisuals(){
+  for(let r=0;r<gridSize;r++){
+    for(let c=0;c<gridSize;c++){
+      if(grid[r][c].type===TARGET){
+        const ring=document.getElementById('target-'+c+'-'+r);
+        if(ring){
+          if(targetsHit.has(c+','+r)){
+            ring.classList.add('hit');
+          }else{
+            ring.classList.remove('hit');
+          }
+        }
+      }
+    }
+  }
+}
+
+// ─── Victory ───
+function showVictory(){
+  const overlay=document.getElementById('victoryOverlay');
+  overlay.classList.add('active');
+  levelCleared[currentLevel]=true;
+  try{localStorage.setItem('hikari-cleared',JSON.stringify(levelCleared))}catch(e){}
+  const par=levelDef.par;
+  let stars=1;
+  if(placedCount<=par)stars=3;
+  else if(placedCount<=par+1)stars=2;
+  const starsEl=document.getElementById('victoryStars');
+  starsEl.innerHTML='';
+  for(let i=0;i<3;i++){
+    const s=document.createElement('div');
+    s.className='star'+(i<stars?' earned':'');
+    s.textContent='⭐';
+    s.style.animationDelay=(i*0.15)+'s';
+    starsEl.appendChild(s);
+  }
+  document.getElementById('victoryTitle').textContent=stars===3?'パーフェクト！✨':stars===2?'すごい！🎉':'クリア！';
+  document.getElementById('victorySub').textContent=stars===3?'さいしょう かがみ数で クリア！':'かがみ '+placedCount+'こ つかった';
+  document.getElementById('nextBtn').style.display=currentLevel<LEVELS.length-1?'':'none';
+  spawnSparkles();
+}
+
+function hideVictory(){
+  document.getElementById('victoryOverlay').classList.remove('active');
+}
+
+function nextLevel(){
+  hideVictory();
+  if(currentLevel<LEVELS.length-1){
+    currentLevel++;
+    initLevel(currentLevel);
+  }
+}
+
+function spawnSparkles(){
+  const colors=['#ffcc00','#00d4ff','#ff44aa','#44ff88','#ff8844'];
+  for(let i=0;i<30;i++){
+    setTimeout(()=>{
+      const s=document.createElement('div');
+      s.className='sparkle';
+      s.style.left=Math.random()*100+'vw';
+      s.style.top=(30+Math.random()*40)+'vh';
+      s.style.background=colors[Math.floor(Math.random()*colors.length)];
+      s.style.width=s.style.height=(3+Math.random()*6)+'px';
+      document.body.appendChild(s);
+      setTimeout(()=>s.remove(),1000);
+    },i*40);
+  }
+}
+
+// ─── Resize ───
+window.addEventListener('resize',()=>{
+  if(document.getElementById('gameScreen').classList.contains('active')){
+    sizeGrid();
+    renderBeamFrame(beamSegments);
+  }
+});
+
+// ─── Init ───
+buildLevelGrid();
+</script>
+</body>
+</html>
